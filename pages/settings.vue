@@ -88,13 +88,11 @@ async function loadDryRun() {
   dryRun.value = res.dryRun;
 }
 
-async function toggleDryRun() {
-  const newValue = !dryRun.value;
+async function saveDryRun() {
   await $fetch("/api/automation/dry-run", {
     method: "POST",
-    body: { dryRun: newValue }
+    body: { dryRun: dryRun.value }
   });
-  dryRun.value = newValue;
 }
 
 onMounted(async () => {
@@ -290,7 +288,7 @@ async function RemoveWindowUntilMidnight() {
               :label="dryRun ? 'Dry-Run (keine echten Aktionen)' : 'Live'"
               color="warning"
               inset
-              @change="toggleDryRun"
+              @update:model-value="saveDryRun"
             />
           </v-card-text>
         </v-card>
