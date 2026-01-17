@@ -54,14 +54,9 @@
 import { ref, computed } from "vue";
 import { useSystemStatus } from "~/composables/useSystemStatus";
 
-const { plexStatus, nasReady, vuPlusReady } = useSystemStatus();
+const { plexReady, nasReady, vuPlusReady } = useSystemStatus();
 
-const plexColor = computed(() => {
-  const s = plexStatus.value?.status;
-  if (s === "green") return "green";
-  if (s === "yellow") return "yellow";
-  return "red";
-});
+const plexColor = computed(() => (plexReady.value ? "green" : "red"));
 
 const nasColor = computed(() => (nasReady.value ? "green" : "red"));
 const vuPlusColor = computed(() => (vuPlusReady.value ? "green" : "red"));
