@@ -39,6 +39,17 @@
         <v-icon :color="vuPlusColor" size="18">mdi-circle</v-icon>
         <span class="ml-1 text-caption">VU+</span>
       </div>
+
+      <!-- DRY-RUN WARNUNG -->
+      <v-chip
+        v-if="dryRun"
+        color="warning"
+        variant="flat"
+        size="small"
+        class="ml-4 mr-4"
+      >
+        DRY-RUN
+      </v-chip>
     </v-app-bar>
 
     <!-- Seiteninhalt -->
@@ -54,7 +65,7 @@
 import { ref, computed } from "vue";
 import { useSystemStatus } from "~/composables/useSystemStatus";
 
-const { plexReady, nasReady, vuPlusReady } = useSystemStatus();
+const { plexReady, nasReady, vuPlusReady, dryRun } = useSystemStatus();
 
 const plexColor = computed(() => (plexReady.value ? "green" : "red"));
 

@@ -16,6 +16,7 @@ interface VuPlusStatusResponse {
 const plexReady = ref(false);
 const nasReady = ref(false);
 const vuPlusReady = ref(false);
+const dryRun = ref(false);
 
 export function useSystemStatus() {
   async function update() {
@@ -46,6 +47,14 @@ export function useSystemStatus() {
     } catch {
       vuPlusReady.value = false;
     }
+
+    // Dry-Run
+    try {
+      const res = await $fetch<{ dryRun: boolean }>("/api/automation/dry-run");
+      dryRun.value = res.dryRun;
+    } catch {
+      dryRun.value = false;
+    }
   }
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -59,6 +68,7 @@ export function useSystemStatus() {
     plexReady,
     nasReady,
     vuPlusReady,
+    dryRun,
     update,
   };
 }
