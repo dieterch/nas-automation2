@@ -128,51 +128,44 @@ async function RemoveWindowUntilMidnight() {
     <v-card class="mb-4">
       <v-card-text>
         <v-row class="mb-0" dense>
-          <v-col cols="12" md="4">
+          <v-col cols="6" md="3">
             <v-btn
               block
               variant="tonal"
-              ncolor="primary"
               elevation="2"
-              class="btn-wrap"
               @click="AddWindowUntilMidnight"
             >
-              NAS on until 24h
+              NAS→24h
             </v-btn>
           </v-col>
 
-          <v-col cols="12" md="4">
+          <v-col cols="6" md="3">
             <v-btn
               block
               variant="tonal"
-              ncolor="primary"
               elevation="2"
-              class="btn-wrap"
               @click="RemoveWindowUntilMidnight"
             >
-              Remove NAS on until 24h
+              NAS Stop
             </v-btn>
           </v-col>
 
-          <v-col cols="12" md="4">
+          <v-col cols="6" md="3">
             <v-btn
               block
               variant="tonal"
-              ncolor="primary"
               elevation="2"
-              class="btn-wrap"
               @click="UpdatePlexCache"
             >
-              Update Plex Cache
+              Plex Refresh
             </v-btn>
           </v-col>
 
-          <v-col cols="12" md="4">
+          <v-col cols="6" md="3">
             <v-btn
               block
               variant="tonal"
               elevation="2"
-              class="btn-wrap"
               @click="vuPlusReady ? vuOff() : vuOn()"
             >
               {{ vuPlusReady ? 'VU+ Off' : 'VU+ On' }}
