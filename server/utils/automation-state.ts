@@ -20,6 +20,7 @@ export interface AutomationStateFile {
   lastDecision?: string;
   reason?: string;
   dryRun?: boolean;
+  alwaysOn?: boolean;
   last: {
     window?: {
       id: string;
@@ -174,4 +175,19 @@ export function setDryRun(value: boolean) {
 export function isDryRun(): boolean {
   const state = loadState();
   return state.dryRun === true;
+}
+
+/* ------------------------------------------------------------
+   Always-On Mode
+------------------------------------------------------------ */
+
+export function setAlwaysOn(value: boolean) {
+  const state = loadState();
+  state.alwaysOn = value;
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+export function isAlwaysOn(): boolean {
+  const state = loadState();
+  return state.alwaysOn === true;
 }

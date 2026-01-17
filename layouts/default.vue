@@ -50,6 +50,30 @@
       >
         DRY-RUN
       </v-chip>
+
+      <!-- ALWAYS-ON TOGGLE -->
+      <v-chip
+        v-if="alwaysOn"
+        color="success"
+        variant="flat"
+        size="small"
+        class="ml-4 mr-4"
+        @click="toggleAlwaysOn"
+        style="cursor: pointer"
+      >
+        ALWAYS-ON
+      </v-chip>
+      <v-chip
+        v-else
+        color="grey"
+        variant="outlined"
+        size="small"
+        class="ml-4 mr-4"
+        @click="toggleAlwaysOn"
+        style="cursor: pointer"
+      >
+        ALWAYS-ON OFF
+      </v-chip>
     </v-app-bar>
 
     <!-- Seiteninhalt -->
@@ -65,7 +89,7 @@
 import { ref, computed } from "vue";
 import { useSystemStatus } from "~/composables/useSystemStatus";
 
-const { plexReady, nasReady, vuPlusReady, dryRun } = useSystemStatus();
+const { plexReady, nasReady, vuPlusReady, dryRun, alwaysOn, update } = useSystemStatus();
 
 const plexColor = computed(() => (plexReady.value ? "green" : "red"));
 
@@ -82,5 +106,18 @@ const menu = [
   { title: "Debug", to: "/debug" },
   { title: "Timeline", to: "/timeline" },
 ];
+
+async function toggleAlwaysOn() {
+  try {
+    const newValue = !alwaysOn.value;
+    await $fetch("/api/automation/always-on", {
+      method: "POST",
+      body: { alwaysOn: newValue },
+    });
+    await update();
+  } catch (err) {
+    console.error("Failed to toggle Always-On mode:", err);
+  }
+}
 </script>
 

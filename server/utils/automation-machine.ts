@@ -1,4 +1,4 @@
-import { saveState, loadState } from "./automation-state";
+import { saveState, loadState, isAlwaysOn } from "./automation-state";
 import { logAutomation } from "./automation-log";
 import { loadConfig } from "./config";
 import { isNasOnlineByPort } from "./nas-utils";
@@ -58,6 +58,35 @@ export async function applyDecision(decision: Decision, reason: string) {
   -------------------------------------------------------------- */
   if (state.dryRun === true) {
     console.log(`[AUTOMATION][DRY-RUN] Would execute: ${decision} (${reason})`);
+    return;
+  }
+
+  /* --------------------------------------------------------------
+     ALWAYS-ON MODE (verhindert Ausschalten, erzwingt Einschalten)
+  -------------------------------------------------------------- */
+  const alwaysOn = isAlwaysOn();
+
+  if (alwaysOn && (decision === "SHUTDOWN_NAS" || decision === "SHUTDOWN_ALL")) {
+    console.log(
+      `[AUTOMATION][ALWAYS-ON] Shutdown blocked by Always-On mode: ${decision} (${reason})`
+    );
+
+    // Sicherstellen, dass alle Geräte eingeschaltet sind
+    const nasOnline = await isNasOnlineByPort();
+
+    if (!nasOnline && cfg.SHELLY?.NAS?.enabled) {
+      console.log("[AUTOMATION][ALWAYS-ON] Ensuring NAS is on...");
+      await NASshellyOnIfNasOff();
+    }
+
+    if (cfg.SHELLY?.VUPLUS?.enabled) {
+      console.log("[AUTOMATION][ALWAYS-ON] Ensuring VU+ is on...");
+      await VUshellyOn();
+    }
+
+    // Plex: Startet normalerweise automatisch mit dem NAS
+    console.log("[AUTOMATION][ALWAYS-ON] Plex starts automatically with NAS (no separate action)");
+
     return;
   }
 

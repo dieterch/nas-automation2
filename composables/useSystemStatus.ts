@@ -17,6 +17,7 @@ const plexReady = ref(false);
 const nasReady = ref(false);
 const vuPlusReady = ref(false);
 const dryRun = ref(false);
+const alwaysOn = ref(false);
 
 export function useSystemStatus() {
   async function update() {
@@ -55,6 +56,14 @@ export function useSystemStatus() {
     } catch {
       dryRun.value = false;
     }
+
+    // Always-On
+    try {
+      const res = await $fetch<{ alwaysOn: boolean }>("/api/automation/always-on");
+      alwaysOn.value = res.alwaysOn;
+    } catch {
+      alwaysOn.value = false;
+    }
   }
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -69,6 +78,7 @@ export function useSystemStatus() {
     nasReady,
     vuPlusReady,
     dryRun,
+    alwaysOn,
     update,
   };
 }

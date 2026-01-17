@@ -3,12 +3,23 @@ import {
   ParsedRecording,
   parseRecording,
 } from "./../../utils/plex-recording";
+import { isAlwaysOn } from "./automation-state";
 
 export function computeAutomationDecision(
   recordings: ParsedRecording[],
   now: Date,
   cfg: any
 ) {
+  /* ------------------------------------------------------------
+     0. Always-On Mode (höchste Priorität)
+  ------------------------------------------------------------ */
+  if (isAlwaysOn()) {
+    return {
+      decision: "KEEP_RUNNING",
+      reason: "always-on mode active",
+    };
+  }
+
   /* ------------------------------------------------------------
      1. Scheduled ON (harte Übersteuerung)
   ------------------------------------------------------------ */
