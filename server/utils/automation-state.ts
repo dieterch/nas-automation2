@@ -19,6 +19,7 @@ export interface AutomationStateFile {
   since: string;
   lastDecision?: string;
   reason?: string;
+  dryRun?: boolean;
   last: {
     window?: {
       id: string;
@@ -158,4 +159,19 @@ export function setLastRecording(event: {
   state.last.recording = event;
 
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+/* ------------------------------------------------------------
+   Dry-Run Mode
+------------------------------------------------------------ */
+
+export function setDryRun(value: boolean) {
+  const state = loadState();
+  state.dryRun = value;
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+export function isDryRun(): boolean {
+  const state = loadState();
+  return state.dryRun === true;
 }

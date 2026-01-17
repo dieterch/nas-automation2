@@ -1,4 +1,4 @@
-import { saveState } from "./automation-state";
+import { saveState, loadState } from "./automation-state";
 import { logAutomation } from "./automation-log";
 import { loadConfig } from "./config";
 import { isNasOnlineByPort } from "./nas-utils";
@@ -44,17 +44,23 @@ async function shutDownNas() {
 ------------------------------------------------------------------ */
 export async function applyDecision(decision: Decision, reason: string) {
   const cfg = loadConfig();
+  const state = loadState();
   const actionsEnabled = cfg.AUTOMATION_ACTIONS_ENABLED === true;
 
   logAutomation({ decision, reason });
 
   console.log(
-    `[AUTOMATION][MACHINE] decision=${decision} reason="${reason}" actionsEnabled=${actionsEnabled}`
+    `[AUTOMATION][MACHINE] decision=${decision} reason="${reason}" actionsEnabled=${actionsEnabled} dryRun=${state.dryRun}`
   );
 
   /* --------------------------------------------------------------
      DRY RUN MODE (kein State-Wechsel!)
   -------------------------------------------------------------- */
+  if (state.dryRun === true) {
+    console.log(`[AUTOMATION][DRY-RUN] Would execute: ${decision} (${reason})`);
+    return;
+  }
+
   if (!actionsEnabled) {
     return;
   }

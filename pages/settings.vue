@@ -53,6 +53,7 @@ const error = ref<string | null>(null);
 const success = ref<string | null>(null);
 
 const config = ref<Config | null>(null);
+const dryRun = ref(false);
 
 /* ================= HELPERS ================= */
 
@@ -82,14 +83,26 @@ async function loadconfig() {
   normalizeSchedules();
 }
 
+async function loadDryRun() {
+  const res = await $fetch<{ dryRun: boolean }>("/api/automation/dry-run");
+  dryRun.value = res.dryRun;
+}
+
+async function toggleDryRun() {
+  const newValue = !dryRun.value;
+  await $fetch("/api/automation/dry-run", {
+    method: "POST",
+    body: { dryRun: newValue }
+  });
+  dryRun.value = newValue;
+}
+
 onMounted(async () => {
   resetMessages();
   loading.value = true;
   try {
-    // const data = await $fetch<Config>("/api/config")
-    // config.value = data
-    // normalizeSchedules()
     await loadconfig();
+    await loadDryRun();
   } catch (e) {
     console.error(e);
     error.value = "Konfiguration konnte nicht geladen werden";
@@ -267,6 +280,20 @@ async function RemoveWindowUntilMidnight() {
                   </v-btn>
                 </v-col>
               </v-row>
+
+        <!-- ================= DRY-RUN ================= -->
+        <v-card variant="tonal" class="mb-4">
+          <v-card-title>Modus</v-card-title>
+          <v-card-text>
+            <v-switch
+              v-model="dryRun"
+              :label="dryRun ? 'Dry-Run (keine echten Aktionen)' : 'Live'"
+              color="warning"
+              inset
+              @change="toggleDryRun"
+            />
+          </v-card-text>
+        </v-card>
 
         <template v-if="config">
           <!-- ================= ZEITEN ================= -->
