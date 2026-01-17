@@ -7,7 +7,7 @@ const log = ref("");
 const loading = ref(false);
 
 const {
-  plexStatus,
+  plexReady,
   nasReady,
   vuPlusReady,
   update: refreshSystemStatus,
@@ -43,26 +43,6 @@ async function callApi(path: string, method: HttpMethod = "GET") {
   }
 }
 
-type AlertType = "success" | "info" | "warning" | "error";
-
-const plexAlert = computed<{
-  type: AlertType;
-  text: string;
-} | null>(() => {
-  const s = plexStatus.value;
-  if (!s) return null;
-
-  switch (s.status) {
-    case "green":
-      return { type: "success", text: "ONLINE" };
-    case "yellow":
-      return { type: "info", text: "IM WARTUNGSMODUS" };
-    case "red":
-      return { type: "warning", text: "OFFLINE" };
-    default:
-      return null;
-  }
-});
 
 
 /* ---------------- NAS ACTIONS ---------------- */
@@ -127,12 +107,11 @@ async function ProxmoxSchedule() {
       <v-card-subtitle>Plex Status</v-card-subtitle>
 
       <v-alert
-        v-if="plexAlert"
-        :type="plexAlert.type"
+        :type="plexReady ? 'success' : 'warning'"
         density="compact"
         class="mb-3"
       >
-        PLEX ist <strong>{{ plexAlert.text }}</strong>
+        PLEX ist <strong>{{ plexReady ? 'ONLINE' : 'OFFLINE' }}</strong>
       </v-alert>
 
       <v-row class="mb-4">

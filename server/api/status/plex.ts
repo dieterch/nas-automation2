@@ -6,32 +6,23 @@ export default defineEventHandler(async () => {
     const res = await $fetch.raw(url, { timeout: 2000 })
     const body = res._data?.toString?.() ?? ""
 
-    // GRÜN: normales Plex-Response
+    // Online: normales Plex-Response
     if (res.status === 200 && body.includes("<MediaContainer")) {
-      return { 
-        status: "green",
+      return {
+        online: true,
         url: plexHost
        }
     }
 
-    // GELB: Plex im Maintenance/DB-Migration Mode
-     if (res.status === 200 && body.includes("<Response")) {
-    // if (body.includes('<Response') && body.includes('503') && body.includes('Maintenance')) {
-      return { 
-        status: "yellow",
-        url: plexHost      
-      }
-    }
-
-    // ROT: Alles andere
-    return { 
-      status: "red", 
+    // Offline: Maintenance-Mode oder andere Responses
+    return {
+      online: false,
       url: plexHost
     }
 
   } catch (err) {
-    return { 
-      status: "red", 
+    return {
+      online: false,
       url: plexHost
     }
   }

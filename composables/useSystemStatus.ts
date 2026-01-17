@@ -1,7 +1,7 @@
 import { ref } from "vue";
 
 interface PlexStatusResponse {
-  status: "red" | "yellow" | "green";
+  online: boolean;
   url: string | null;
 }
 
@@ -13,8 +13,7 @@ interface VuPlusStatusResponse {
   on: boolean;
 }
 
-const plexStatus = ref<PlexStatusResponse | null>(null);
-// const plexStatus = ref<PlexStatus>("red");
+const plexReady = ref(false);
 const nasReady = ref(false);
 const vuPlusReady = ref(false);
 
@@ -23,12 +22,9 @@ export function useSystemStatus() {
     // Plex
     try {
       const plexRes = await $fetch<PlexStatusResponse>("/api/status/plex");
-      plexStatus.value = plexRes;
+      plexReady.value = plexRes.online;
     } catch {
-      plexStatus.value = {
-        status: "red",
-        url: null,
-      };
+      plexReady.value = false;
     }
 
     // NAS
@@ -60,7 +56,7 @@ export function useSystemStatus() {
   }
 
   return {
-    plexStatus,
+    plexReady,
     nasReady,
     vuPlusReady,
     update,
