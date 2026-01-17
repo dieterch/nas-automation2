@@ -192,21 +192,20 @@ async function ProxmoxSchedule() {
       </v-alert>
 
       <v-row class="mb-4">
-        <v-col cols="12" md="4">
-          <v-btn block color="teal" :loading="loading" @click="vuOn">
-            VU+ einschalten
+        <v-col cols="12" md="6">
+          <v-btn
+            block
+            :color="vuPlusReady ? 'deep-orange' : 'teal'"
+            :loading="loading"
+            @click="vuPlusReady ? vuOff() : vuOn()"
+          >
+            {{ vuPlusReady ? 'VU+ ausschalten' : 'VU+ einschalten' }}
           </v-btn>
         </v-col>
 
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="6">
           <v-btn block color="teal" :loading="loading" @click="orf1">
             ORF1
-          </v-btn>
-        </v-col>
-
-        <v-col cols="12" md="4">
-          <v-btn block color="deep-orange" :loading="loading" @click="vuOff">
-            VU+ ausschalten
           </v-btn>
         </v-col>
       </v-row>

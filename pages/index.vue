@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
+import { useSystemStatus } from "~/composables/useSystemStatus";
 const cfg = useRuntimeConfig();
+const { vuPlusReady } = useSystemStatus();
 
 const data = ref<any | null>(null);
 const debugData = ref<any | null>(null);
@@ -169,25 +171,11 @@ async function RemoveWindowUntilMidnight() {
             <v-btn
               block
               variant="tonal"
-              ncolor="primary"
               elevation="2"
               class="btn-wrap"
-              @click="vuOn"
+              @click="vuPlusReady ? vuOff() : vuOn()"
             >
-              VU+ On
-            </v-btn>
-          </v-col>
-
-          <v-col cols="12" md="4">
-            <v-btn
-              block
-              variant="tonal"
-              ncolor="primary"
-              elevation="2"
-              class="btn-wrap"
-              @click="vuOff"
-            >
-              VU+ Off
+              {{ vuPlusReady ? 'VU+ Off' : 'VU+ On' }}
             </v-btn>
           </v-col>
         </v-row>
