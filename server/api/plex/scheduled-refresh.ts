@@ -6,6 +6,10 @@ import {
   ParsedRecording,
   parseRecording,
 } from "~/utils/plex-recording";
+import {
+  addCompletedRecording,
+  cleanupOldRecordings,
+} from "~/server/utils/completed-recordings";
 
 /* ------------------------------------------------------------
    Helpers
@@ -82,19 +86,33 @@ async function shouldUpdateCache(
 /**
  * Entfernt nur wirklich erledigte Aufnahmen
  * (graceausschaltzeit < now)
+ * Speichert erledigte Aufnahmen in completed-recordings
  */
-function sanitizePlexPayload(data: any, config: any): any {
+async function sanitizePlexPayload(data: any, config: any): Promise<any> {
   const mc = data?.MediaContainer;
   if (!mc?.MediaGrabOperation) return data;
 
   const now = new Date();
+  const completedOps: any[] = [];
 
   mc.MediaGrabOperation = mc.MediaGrabOperation.filter((op: any) => {
     const parsed: ParsedRecording | null = parseRecording(op, config);
     if (!parsed) return false;
 
-    return now < parsed.graceAusschaltZeit;
+    const isStillRelevant = now < parsed.graceAusschaltZeit;
+
+    if (!isStillRelevant) {
+      completedOps.push(op);
+    }
+
+    return isStillRelevant;
   });
+
+  for (const op of completedOps) {
+    await addCompletedRecording(op, now);
+  }
+
+  await cleanupOldRecordings(30);
 
   return data;
 }
@@ -135,7 +153,7 @@ export default defineEventHandler(async () => {
       };
     }
 
-    const cleaned = sanitizePlexPayload(data, config);
+    const cleaned = await sanitizePlexPayload(data, config);
     const cached = await writePlexCache(cleaned);
 
     console.log("[AUTOMATION][SCHEDULED-REFRESH] cache updated");

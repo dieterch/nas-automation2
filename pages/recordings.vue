@@ -13,6 +13,7 @@ type AnyRecord = Record<any, any>;
    STATES
 ------------------------------------------------------------------ */
 const items = ref<AnyRecord[]>([]);
+const completedItems = ref<AnyRecord[]>([]);
 const loading = ref<boolean>(true);
 const error = ref<any>(null);
 const config = ref<AnyRecord | null>(null);
@@ -109,6 +110,15 @@ const recordingEntries = computed(() =>
   timelineEntries.value.filter(e => e.type === "recording")
 );
 
+const parsedCompletedRecordings = computed<ParsedRecording[]>(() => {
+  if (!config.value) return [];
+
+  return completedItems.value
+    .map((r) => parseRecording(r.rawData, config.value))
+    .filter((r): r is ParsedRecording => r !== null)
+    .sort((a, b) => b.sendungsStart.getTime() - a.sendungsStart.getTime());
+});
+
 /* ------------------------------------------------------------------
    API LOAD
 ------------------------------------------------------------------ */
@@ -127,6 +137,9 @@ onMounted(async () => {
     items.value = res.data?.MediaContainer?.MediaGrabOperation ?? [];
 
     lastFetch.value = res.lastSuccessfulFetch ?? null;
+
+    const completedRes: AnyRecord = await $fetch("/api/plex/completed-recordings");
+    completedItems.value = completedRes.recordings ?? [];
   } catch (err) {
     error.value = err;
   } finally {
@@ -245,6 +258,50 @@ async function UpdatePlexCache() {
                     <td>
                       {{ item.skipShutdown ? "-" : format(item.wiederstart) }}
                     </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
+      </v-card-text>
+    </v-card>
+
+    <v-card class="mt-4">
+      <v-card-title class="text-body-1">Abgeschlossene Aufnahmen (30 Tage)</v-card-title>
+      <v-card-text>
+        <v-progress-circular v-if="loading" indeterminate />
+
+        <v-alert v-if="!loading && parsedCompletedRecordings.length === 0" type="info" density="compact">
+          Keine abgeschlossenen Aufnahmen vorhanden
+        </v-alert>
+
+        <v-expansion-panels v-if="!loading && parsedCompletedRecordings.length > 0" variant="accordion" class="recording-panels">
+          <v-expansion-panel v-for="(item, index) in parsedCompletedRecordings" :key="index" bg-color="green-lighten-5" elevation="0">
+            <v-expansion-panel-title class="py-1 text-body-2 d-flex align-center">
+              <v-icon size="16" class="mr-1">mdi-check-circle</v-icon>
+              <span class="font-weight-medium">
+                {{ item.displayTitle }}
+              </span>
+            </v-expansion-panel-title>
+
+            <v-expansion-panel-text class="py-1 px-2">
+              <v-table density="compact">
+                <tbody>
+                  <tr>
+                    <td class="label">Geräte</td>
+                    <td>{{ format(item.einschaltZeit) }}</td>
+                    <td>{{ format(item.ausschaltZeit) }}</td>
+                  </tr>
+                  <tr>
+                    <td class="label">Aufnahme</td>
+                    <td>{{ format(item.aufnahmeStart) }}</td>
+                    <td>{{ format(item.aufnahmeEnde) }}</td>
+                  </tr>
+                  <tr>
+                    <td class="label">Sendung</td>
+                    <td>{{ format(item.sendungsStart) }}</td>
+                    <td>{{ format(item.sendungsEnde) }}</td>
                   </tr>
                 </tbody>
               </v-table>
