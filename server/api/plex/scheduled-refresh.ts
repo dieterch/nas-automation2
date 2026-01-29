@@ -84,35 +84,58 @@ async function shouldUpdateCache(
 }
 
 /**
+ * Vergleicht alte und neue Aufnahmen, um abgeschlossene zu erkennen
+ * Speichert Aufnahmen, die aus dem Plex-Response verschwunden sind
+ */
+async function detectCompletedRecordings(
+  oldData: any,
+  newData: any,
+  config: any
+): Promise<void> {
+  const oldOps = extractSchedules(oldData);
+  const newOps = extractSchedules(newData);
+
+  const now = new Date();
+
+  // IDs der neuen Aufnahmen
+  const newIds = new Set(newOps.map((op: any) => op.id ?? op.key));
+
+  // Finde Aufnahmen, die im alten Cache waren, aber nicht mehr im neuen
+  for (const oldOp of oldOps) {
+    const oldId = oldOp.id ?? oldOp.key;
+
+    if (!newIds.has(oldId)) {
+      // Diese Aufnahme ist verschwunden → vermutlich abgeschlossen
+      const parsed = parseRecording(oldOp, config);
+
+      // Nur speichern wenn die Aufnahme tatsächlich beendet wurde
+      // (nicht nur gestartet, damit abgebrochene Aufnahmen nicht gespeichert werden)
+      if (parsed && now >= parsed.aufnahmeEnde) {
+        await addCompletedRecording(oldOp, now);
+        console.log(`[COMPLETED] Saved completed recording: ${parsed.displayTitle}`);
+      }
+    }
+  }
+
+  await cleanupOldRecordings(30);
+}
+
+/**
  * Entfernt nur wirklich erledigte Aufnahmen
  * (graceausschaltzeit < now)
- * Speichert erledigte Aufnahmen in completed-recordings
  */
-async function sanitizePlexPayload(data: any, config: any): Promise<any> {
+function sanitizePlexPayload(data: any, config: any): any {
   const mc = data?.MediaContainer;
   if (!mc?.MediaGrabOperation) return data;
 
   const now = new Date();
-  const completedOps: any[] = [];
 
   mc.MediaGrabOperation = mc.MediaGrabOperation.filter((op: any) => {
     const parsed: ParsedRecording | null = parseRecording(op, config);
     if (!parsed) return false;
 
-    const isStillRelevant = now < parsed.graceAusschaltZeit;
-
-    if (!isStillRelevant) {
-      completedOps.push(op);
-    }
-
-    return isStillRelevant;
+    return now < parsed.graceAusschaltZeit;
   });
-
-  for (const op of completedOps) {
-    await addCompletedRecording(op, now);
-  }
-
-  await cleanupOldRecordings(30);
 
   return data;
 }
@@ -153,7 +176,12 @@ export default defineEventHandler(async () => {
       };
     }
 
-    const cleaned = await sanitizePlexPayload(data, config);
+    // Detect and save completed recordings before updating cache
+    if (existing?.data) {
+      await detectCompletedRecordings(existing.data, data, config);
+    }
+
+    const cleaned = sanitizePlexPayload(data, config);
     const cached = await writePlexCache(cleaned);
 
     console.log("[AUTOMATION][SCHEDULED-REFRESH] cache updated");
