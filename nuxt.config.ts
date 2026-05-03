@@ -17,6 +17,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     plexHost: process.env.PLEX_HOST,
     plexToken: process.env.PLEX_TOKEN,
+    plexIndexDir: process.env.PLEX_INDEX_DIR,
 
     NAS_IP: process.env.NAS_IP,
     NAS_SSH_USER: process.env.NAS_SSH_USER,

@@ -101,6 +101,7 @@ const drawer = ref(false);
 const menu = [
   { title: "Dashboard", to: "/" },
   { title: "Aufnahmeplan", to: "/recordings" },
+  { title: "Plex Offline", to: "/plex-index" },
   //{ title: "Manual", to: "/manual" },
   { title: "Einstellungen", to: "/settings" },
   { title: "Debug", to: "/debug" },
@@ -120,4 +121,3 @@ async function toggleAlwaysOn() {
   }
 }
 </script>
-
