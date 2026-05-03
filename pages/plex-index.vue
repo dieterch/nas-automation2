@@ -18,6 +18,8 @@ type Movie = {
   summary?: string | null
 }
 
+type PosterSize = "small" | "medium" | "large"
+
 const loading = ref(true)
 const syncing = ref(false)
 const libraries = ref<Library[]>([])
@@ -27,11 +29,53 @@ const search = ref("")
 const updatedAt = ref<string | null>(null)
 const source = ref("local")
 const error = ref<string | null>(null)
+const posterSize = ref<PosterSize>("medium")
+const posterErrors = ref<Record<string, boolean>>({})
 
 const filteredMovies = computed(() => movies.value)
 
+const sizeOptions: Array<{ title: string; value: PosterSize }> = [
+  { title: "Klein", value: "small" },
+  { title: "Mittel", value: "medium" },
+  { title: "Groß", value: "large" },
+]
+
+const gridCols = computed(() => {
+  switch (posterSize.value) {
+    case "small":
+      return { cols: 12, sm: 6, md: 4, lg: 2 }
+    case "large":
+      return { cols: 12, sm: 6, md: 5, lg: 4 }
+    default:
+      return { cols: 12, sm: 6, md: 3, lg: 2 }
+  }
+})
+
+const posterHeight = computed(() => {
+  switch (posterSize.value) {
+    case "small":
+      return 170
+    case "large":
+      return 360
+    default:
+      return 220
+  }
+})
+
 function posterUrl(movie: Movie) {
   return `/api/plex/index/poster?libraryKey=${encodeURIComponent(movie.libraryKey)}&ratingKey=${encodeURIComponent(movie.ratingKey)}`
+}
+
+function posterKey(movie: Movie) {
+  return `${movie.libraryKey}:${movie.ratingKey}`
+}
+
+function markPosterError(movie: Movie) {
+  posterErrors.value[posterKey(movie)] = true
+}
+
+function clearPosterError(movie: Movie) {
+  delete posterErrors.value[posterKey(movie)]
 }
 
 function formatTimestamp(value?: string | null) {
@@ -135,6 +179,28 @@ onMounted(async () => {
           </v-col>
         </v-row>
 
+        <v-row dense class="mt-1">
+          <v-col cols="12" md="6">
+            <div class="text-caption text-medium-emphasis mb-2">
+              Postergröße
+            </div>
+            <v-btn-toggle
+              v-model="posterSize"
+              mandatory
+              divided
+              density="comfortable"
+            >
+              <v-btn
+                v-for="option in sizeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.title }}
+              </v-btn>
+            </v-btn-toggle>
+          </v-col>
+        </v-row>
+
         <v-alert
           v-if="source === 'local'"
           type="info"
@@ -165,23 +231,41 @@ onMounted(async () => {
       <v-col
         v-for="movie in filteredMovies"
         :key="movie.ratingKey"
-        cols="12"
-        sm="6"
-        md="4"
-        lg="3"
+        :cols="gridCols.cols"
+        :sm="gridCols.sm"
+        :md="gridCols.md"
+        :lg="gridCols.lg"
       >
         <v-card height="100%">
-          <v-img
-            :src="posterUrl(movie)"
-            :alt="movie.title"
-            height="360"
-            cover
-          />
+          <div
+            class="poster-frame d-flex align-center justify-center"
+            :style="{ height: `${posterHeight}px` }"
+          >
+            <img
+              v-if="!posterErrors[posterKey(movie)]"
+              :src="posterUrl(movie)"
+              :alt="movie.title"
+              class="poster-image"
+              @error="markPosterError(movie)"
+              @load="clearPosterError(movie)"
+            >
+            <div
+              v-else
+              class="poster-fallback d-flex flex-column align-center justify-center"
+            >
+              <v-icon size="48" color="grey-darken-1">
+                mdi-image-off-outline
+              </v-icon>
+              <div class="text-caption text-medium-emphasis text-center px-4">
+                Kein Poster lokal vorhanden
+              </div>
+            </div>
+          </div>
           <v-card-title>{{ movie.title }}</v-card-title>
           <v-card-subtitle>
             {{ movie.year ?? "ohne Jahr" }}
           </v-card-subtitle>
-          <v-card-text class="text-body-2">
+          <v-card-text class="text-body-2 summary-text">
             {{ movie.summary || "Keine Beschreibung vorhanden." }}
           </v-card-text>
         </v-card>
@@ -189,3 +273,29 @@ onMounted(async () => {
     </v-row>
   </v-container>
 </template>
+
+<style scoped>
+.poster-frame {
+  overflow: hidden;
+}
+
+.poster-fallback {
+  width: 100%;
+  height: 100%;
+  gap: 12px;
+}
+
+.poster-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.summary-text {
+  max-height: 12em;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+</style>
