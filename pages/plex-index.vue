@@ -365,8 +365,8 @@ onBeforeUnmount(() => {
     <v-card class="mb-4">
       <v-card-title>Plex Offline Index</v-card-title>
       <v-card-text>
-        <v-row dense>
-          <v-col cols="12" md="1" class="d-flex align-center">
+        <v-row dense align="center">
+          <v-col cols="12" md="1" class="d-flex align-center justify-center">
             <v-menu v-model="settingsOpen" :close-on-content-click="false">
               <template #activator="{ props }">
                 <v-btn
@@ -430,7 +430,7 @@ onBeforeUnmount(() => {
               </v-card>
             </v-menu>
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col cols="12" md="5">
             <v-select
               v-model="selectedLibrary"
               label="Mediathek"
@@ -441,7 +441,7 @@ onBeforeUnmount(() => {
               @update:model-value="loadCurrentItems"
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col cols="12" md="5">
             <v-text-field
               v-model="search"
               label="Suche"
@@ -450,7 +450,7 @@ onBeforeUnmount(() => {
               @update:model-value="loadCurrentItems"
             />
           </v-col>
-          <v-col cols="12" md="1" class="d-flex align-center ga-2">
+          <v-col cols="12" md="1" class="d-flex align-center justify-center">
             <v-tooltip text="Mediathek synchronisieren" location="top">
               <template #activator="{ props }">
                 <v-btn
