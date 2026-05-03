@@ -1,0 +1,40 @@
+services:
+  nasautomation:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: nas-automation
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Vienna
+    volumes:
+      - ../data:/app/data
+      - ../.env:/app/.env:ro
+      - ../logs:/app/logs
+    dns:
+      - 192.168.15.122
+      - 192.168.15.1 
+    labels:
+      - "traefik.enable=true"
+
+      # Router
+      - "traefik.http.routers.nasautomation.rule=Host(`nasautomation.home.smallfamilybusiness.net`)"
+      - "traefik.http.routers.nasautomation.entrypoints=https"
+      # - "traefik.http.routers.nasautomation.tls=true"
+      - "traefik.http.routers.nasautomation.tls.certresolver=letsencrypt"
+
+      # ForwardAuth middleware pointing to the auth middleware in the traefik dynamic configuration file
+      #- "traefik.http.routers.nasautomation.middlewares=authserver@file"
+      #- "traefik.http.routers.nasautomation.middlewares=authentik@file"
+      - "traefik.http.routers.nasautomation.middlewares=authelia@file"
+
+      # Service
+      - "traefik.http.services.nasautomation.loadbalancer.server.port=3000"
+      - "traefik.docker.network=traefik_network"
+
+    networks:
+      - traefik_network
+
+networks:
+  traefik_network:
+    external: true  

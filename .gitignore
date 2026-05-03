@@ -24,3 +24,10 @@ logs
 .env.*
 !.env.example
 adm-shutdown-test*
+
+# Docker runtime and secrets
+docker/logs/
+docker/ssh/
+docker/.env
+docker/.env.*
+!docker/.env.example
