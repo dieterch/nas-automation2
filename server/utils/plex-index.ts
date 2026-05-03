@@ -14,6 +14,29 @@ export type PlexIndexLibrary = {
   itemCount?: number
 }
 
+export type PlexIndexSyncLibraryStatus = {
+  libraryKey: string
+  title: string
+  itemCount: number
+  posterTotal: number
+  posterCompleted: number
+  posterFailed: number
+  status: "pending" | "syncing" | "posters" | "done" | "error"
+  startedAt?: string | null
+  finishedAt?: string | null
+  lastError?: string | null
+}
+
+export type PlexIndexSyncStatus = {
+  isRunning: boolean
+  phase: "idle" | "syncing" | "posters" | "done" | "error"
+  startedAt?: string | null
+  finishedAt?: string | null
+  lastSuccessAt?: string | null
+  lastError?: string | null
+  libraries: PlexIndexSyncLibraryStatus[]
+}
+
 export type PlexMovieIndexEntry = {
   ratingKey: string
   libraryKey: string
@@ -43,6 +66,16 @@ type LibrariesEnvelope = {
   items: PlexIndexLibrary[]
 }
 
+const defaultSyncStatus: PlexIndexSyncStatus = {
+  isRunning: false,
+  phase: "idle",
+  startedAt: null,
+  finishedAt: null,
+  lastSuccessAt: null,
+  lastError: null,
+  libraries: [],
+}
+
 function getIndexRoot() {
   const cfg = useRuntimeConfig()
   const configured = cfg.plexIndexDir as string | undefined
@@ -70,6 +103,10 @@ function getEpisodesFile() {
   return join(getIndexRoot(), "episodes.json")
 }
 
+function getSyncStatusFile() {
+  return join(getIndexRoot(), "sync-status.json")
+}
+
 export function getPosterAbsolutePath(libraryKey: string, ratingKey: string) {
   return join(getIndexRoot(), "posters", libraryKey, `${ratingKey}.jpg`)
 }
@@ -85,6 +122,7 @@ export async function ensurePlexIndexStructure() {
   await ensureEnvelopeFile(getMoviesFile())
   await ensureEnvelopeFile(getShowsFile())
   await ensureEnvelopeFile(getEpisodesFile())
+  await ensureSyncStatusFile()
 }
 
 async function ensureEnvelopeFile(path: string) {
@@ -96,6 +134,14 @@ async function ensureEnvelopeFile(path: string) {
     JSON.stringify({ updatedAt: null, items: [] }, null, 2),
     "utf-8"
   )
+}
+
+async function ensureSyncStatusFile() {
+  const path = getSyncStatusFile()
+  if (existsSync(path)) return
+
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, JSON.stringify(defaultSyncStatus, null, 2), "utf-8")
 }
 
 async function readEnvelope<T>(path: string): Promise<IndexEnvelope<T>> {
@@ -140,6 +186,24 @@ export async function readIndexedMovies(): Promise<IndexEnvelope<PlexMovieIndexE
 
 export async function writeIndexedMovies(items: PlexMovieIndexEntry[]) {
   await writeEnvelope(getMoviesFile(), items)
+}
+
+export async function readSyncStatus(): Promise<PlexIndexSyncStatus> {
+  await ensureSyncStatusFile()
+
+  const raw = await readFile(getSyncStatusFile(), "utf-8")
+  const parsed = JSON.parse(raw) as Partial<PlexIndexSyncStatus>
+
+  return {
+    ...defaultSyncStatus,
+    ...parsed,
+    libraries: Array.isArray(parsed.libraries) ? parsed.libraries : [],
+  }
+}
+
+export async function writeSyncStatus(status: PlexIndexSyncStatus) {
+  await mkdir(dirname(getSyncStatusFile()), { recursive: true })
+  await writeFile(getSyncStatusFile(), JSON.stringify(status, null, 2), "utf-8")
 }
 
 export async function writePosterFile(

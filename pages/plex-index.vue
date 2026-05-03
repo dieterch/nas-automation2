@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 
 type Library = {
   key: string
@@ -7,6 +7,30 @@ type Library = {
   type: string
   lastSyncAt?: string | null
   itemCount?: number
+  sync?: LibrarySyncStatus
+}
+
+type LibrarySyncStatus = {
+  libraryKey: string
+  title: string
+  itemCount: number
+  posterTotal: number
+  posterCompleted: number
+  posterFailed: number
+  status: "pending" | "syncing" | "posters" | "done" | "error"
+  startedAt?: string | null
+  finishedAt?: string | null
+  lastError?: string | null
+}
+
+type SyncStatus = {
+  isRunning: boolean
+  phase: "idle" | "syncing" | "posters" | "done" | "error"
+  startedAt?: string | null
+  finishedAt?: string | null
+  lastSuccessAt?: string | null
+  lastError?: string | null
+  libraries: LibrarySyncStatus[]
 }
 
 type Movie = {
@@ -39,6 +63,8 @@ const sortField = ref<SortField>("recorded")
 const sortDirection = ref<SortDirection>("desc")
 const settingsOpen = ref(false)
 const posterErrors = ref<Record<string, boolean>>({})
+const syncStatus = ref<SyncStatus | null>(null)
+let syncPollHandle: ReturnType<typeof setInterval> | null = null
 
 const filteredMovies = computed(() => movies.value)
 const totalMovies = computed(() => filteredMovies.value.length)
@@ -47,6 +73,14 @@ const totalDurationMinutes = computed(() => {
 })
 const totalDurationHours = computed(() => {
   return (totalDurationMinutes.value / 60).toFixed(1)
+})
+const selectedLibrarySync = computed(() => {
+  return syncStatus.value?.libraries.find((item) => item.libraryKey === selectedLibrary.value) ?? null
+})
+const posterProgress = computed(() => {
+  const current = selectedLibrarySync.value
+  if (!current || current.posterTotal === 0) return 0
+  return Math.round((current.posterCompleted / current.posterTotal) * 100)
 })
 
 const sizeOptions: Array<{ title: string; value: PosterSize }> = [
@@ -127,13 +161,42 @@ function formatShortDate(value?: string | null) {
 }
 
 async function loadLibraries() {
-  const res = await $fetch<{ items: Library[]; source: string }>("/api/plex/index/libraries")
+  const res = await $fetch<{ items: Library[]; source: string; syncStatus?: SyncStatus }>(
+    "/api/plex/index/libraries"
+  )
   libraries.value = res.items
   source.value = res.source
+  syncStatus.value = res.syncStatus ?? syncStatus.value
 
   if (!selectedLibrary.value && libraries.value.length > 0) {
     selectedLibrary.value = libraries.value[0]!.key
   }
+}
+
+async function loadSyncStatus() {
+  syncStatus.value = await $fetch<SyncStatus>("/api/plex/index/status")
+}
+
+function ensureSyncPolling() {
+  if (syncPollHandle) return
+
+  syncPollHandle = setInterval(async () => {
+    try {
+      await loadSyncStatus()
+      if (!syncStatus.value?.isRunning) {
+        stopSyncPolling()
+        await loadLibraries()
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }, 3000)
+}
+
+function stopSyncPolling() {
+  if (!syncPollHandle) return
+  clearInterval(syncPollHandle)
+  syncPollHandle = null
 }
 
 async function loadMovies() {
@@ -161,6 +224,8 @@ async function syncSelected() {
       },
     })
 
+    await loadSyncStatus()
+    ensureSyncPolling()
     await loadLibraries()
     await loadMovies()
   } catch (err) {
@@ -174,13 +239,21 @@ async function syncSelected() {
 onMounted(async () => {
   try {
     await loadLibraries()
+    await loadSyncStatus()
     await loadMovies()
+    if (syncStatus.value?.isRunning) {
+      ensureSyncPolling()
+    }
   } catch (err) {
     console.error(err)
     error.value = "Plex-Index konnte nicht geladen werden"
   } finally {
     loading.value = false
   }
+})
+
+onBeforeUnmount(() => {
+  stopSyncPolling()
 })
 </script>
 
@@ -299,6 +372,31 @@ onMounted(async () => {
           {{ error }}
         </v-alert>
 
+        <v-alert
+          v-if="syncStatus?.isRunning"
+          type="info"
+          density="compact"
+          class="mt-4"
+        >
+          <div>
+            Synchronisierung läuft
+            <span v-if="selectedLibrarySync">
+              : {{ selectedLibrarySync.title }}
+              ({{ selectedLibrarySync.posterCompleted }}/{{ selectedLibrarySync.posterTotal }} Poster,
+              {{ posterProgress }}%)
+            </span>
+          </div>
+        </v-alert>
+
+        <v-alert
+          v-else-if="selectedLibrarySync?.posterFailed"
+          type="warning"
+          density="compact"
+          class="mt-4"
+        >
+          Poster-Nachladen beendet mit {{ selectedLibrarySync.posterFailed }} Fehlern.
+        </v-alert>
+
         <v-row dense class="mt-4">
           <v-col cols="12" md="4">
             <div class="text-caption text-medium-emphasis">
@@ -313,6 +411,12 @@ onMounted(async () => {
           <v-col cols="12" md="4">
             <div class="text-caption text-medium-emphasis">
               Letzter lokaler Index: {{ formatTimestamp(updatedAt) }}
+            </div>
+          </v-col>
+          <v-col cols="12" md="4">
+            <div class="text-caption text-medium-emphasis">
+              Letzter erfolgreicher Sync:
+              {{ formatTimestamp(syncStatus?.lastSuccessAt) }}
             </div>
           </v-col>
         </v-row>

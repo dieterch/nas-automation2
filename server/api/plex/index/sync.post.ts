@@ -7,6 +7,8 @@ import {
   posterExists,
   readIndexedLibraries,
   readIndexedMovies,
+  readSyncStatus,
+  writeSyncStatus,
   writeIndexedLibraries,
   writeIndexedMovies,
   writePosterFile,
@@ -33,21 +35,88 @@ async function fetchPlexBinary(relativeUrl: string) {
   return new Uint8Array(await res.arrayBuffer())
 }
 
+function toErrorMessage(err: unknown) {
+  if (err instanceof Error) return err.message
+  return String(err)
+}
+
+async function updateLibrarySyncStatus(
+  libraryKey: string,
+  updater: (library: any) => any,
+  globalUpdater?: (status: any) => any
+) {
+  const status = await readSyncStatus()
+  const nextLibraries = status.libraries.map((library) => {
+    if (library.libraryKey !== libraryKey) return library
+    return updater(library)
+  })
+
+  const nextStatus = {
+    ...status,
+    libraries: nextLibraries,
+  }
+
+  await writeSyncStatus(globalUpdater ? globalUpdater(nextStatus) : nextStatus)
+}
+
 async function downloadMissingPosters(libraryKey: string, items: any[]) {
   for (const item of items) {
     const ratingKey = String(item.ratingKey)
     const thumb = item.thumb as string | undefined
 
-    if (!thumb) continue
-    if (posterExists(libraryKey, ratingKey)) continue
+    if (!thumb) {
+      await updateLibrarySyncStatus(libraryKey, (library) => ({
+        ...library,
+        posterCompleted: library.posterCompleted + 1,
+      }))
+      continue
+    }
+
+    if (posterExists(libraryKey, ratingKey)) {
+      await updateLibrarySyncStatus(libraryKey, (library) => ({
+        ...library,
+        posterCompleted: library.posterCompleted + 1,
+      }))
+      continue
+    }
 
     try {
       const bytes = await fetchPlexBinary(thumb)
       await writePosterFile(libraryKey, ratingKey, bytes)
+      await updateLibrarySyncStatus(libraryKey, (library) => ({
+        ...library,
+        posterCompleted: library.posterCompleted + 1,
+      }))
     } catch (err) {
       console.error("[PLEX-INDEX] poster download failed", libraryKey, ratingKey, err)
+      await updateLibrarySyncStatus(libraryKey, (library) => ({
+        ...library,
+        posterCompleted: library.posterCompleted + 1,
+        posterFailed: library.posterFailed + 1,
+        lastError: toErrorMessage(err),
+      }))
     }
   }
+
+  const currentStatus = await readSyncStatus()
+  const nextLibraries = currentStatus.libraries.map((library) => {
+    if (library.libraryKey !== libraryKey) return library
+    return {
+      ...library,
+      status: library.posterFailed > 0 ? "error" : "done",
+      finishedAt: new Date().toISOString(),
+    }
+  })
+
+  const anyRunning = nextLibraries.some((library) => !["done", "error"].includes(library.status))
+  await writeSyncStatus({
+    ...currentStatus,
+    isRunning: anyRunning,
+    phase: anyRunning ? "posters" : "done",
+    finishedAt: anyRunning ? currentStatus.finishedAt : new Date().toISOString(),
+    lastSuccessAt: anyRunning ? currentStatus.lastSuccessAt : new Date().toISOString(),
+    libraries: nextLibraries,
+  })
 }
 
 export default defineEventHandler(async (event) => {
@@ -57,6 +126,14 @@ export default defineEventHandler(async (event) => {
   const requestedKeys = Array.isArray(body?.libraryKeys)
     ? body.libraryKeys.map(String)
     : []
+
+  const currentStatus = await readSyncStatus()
+  if (currentStatus.isRunning) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: "Plex index sync already running",
+    })
+  }
 
   const sectionsResponse = await fetchPlexSafely("/library/sections")
   if ((sectionsResponse as any)?.error) {
@@ -69,6 +146,27 @@ export default defineEventHandler(async (event) => {
   const sections = ((sectionsResponse as any)?.MediaContainer?.Directory ?? [])
     .filter((section: any) => section.type === "movie")
     .filter((section: any) => requestedKeys.length === 0 || requestedKeys.includes(String(section.key)))
+
+  await writeSyncStatus({
+    isRunning: true,
+    phase: "syncing",
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    lastSuccessAt: currentStatus.lastSuccessAt ?? null,
+    lastError: null,
+    libraries: sections.map((section: any) => ({
+      libraryKey: String(section.key),
+      title: section.title,
+      itemCount: 0,
+      posterTotal: 0,
+      posterCompleted: 0,
+      posterFailed: 0,
+      status: "pending" as const,
+      startedAt: null,
+      finishedAt: null,
+      lastError: null,
+    })),
+  })
 
   const librariesEnvelope = await readIndexedLibraries()
   const moviesEnvelope = await readIndexedMovies()
@@ -85,9 +183,39 @@ export default defineEventHandler(async (event) => {
   for (const section of sections) {
     const libraryKey = String(section.key)
     console.log("[PLEX-INDEX] sync library", libraryKey, section.title)
+
+    await updateLibrarySyncStatus(
+      libraryKey,
+      (library) => ({
+        ...library,
+        status: "syncing",
+        startedAt: library.startedAt ?? new Date().toISOString(),
+      }),
+      (status) => ({
+        ...status,
+        phase: "syncing",
+      })
+    )
+
     const allResponse = await fetchPlexSafely(`/library/sections/${libraryKey}/all?type=1`)
 
     if ((allResponse as any)?.error) {
+      await updateLibrarySyncStatus(
+        libraryKey,
+        (library) => ({
+          ...library,
+          status: "error",
+          finishedAt: new Date().toISOString(),
+          lastError: `Plex library sync failed: ${section.title}`,
+        }),
+        (status) => ({
+          ...status,
+          isRunning: false,
+          phase: "error",
+          finishedAt: new Date().toISOString(),
+          lastError: `Plex library sync failed: ${section.title}`,
+        })
+      )
       throw createError({
         statusCode: 503,
         statusMessage: `Plex library sync failed: ${section.title}`,
@@ -120,6 +248,20 @@ export default defineEventHandler(async (event) => {
 
     await writeIndexedMovies(newMovies)
     await writeIndexedLibraries(syncedLibraries)
+
+    await updateLibrarySyncStatus(
+      libraryKey,
+      (library) => ({
+        ...library,
+        itemCount: mapped.length,
+        posterTotal: items.length,
+        status: "posters",
+      }),
+      (status) => ({
+        ...status,
+        phase: "posters",
+      })
+    )
 
     void downloadMissingPosters(libraryKey, items)
   }
