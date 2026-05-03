@@ -20,6 +20,8 @@ export type PlexMovieIndexEntry = {
   title: string
   originalTitle?: string | null
   year?: number | null
+  originallyAvailableAt?: string | null
+  durationMinutes?: number | null
   summary?: string | null
   contentRating?: string | null
   studio?: string | null
@@ -167,6 +169,19 @@ export function normalizePlexTimestamp(value: unknown): string | null {
   return null
 }
 
+export function normalizePlexDate(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return date.toISOString()
+}
+
 export function mapLibrary(section: any, previous?: PlexIndexLibrary): PlexIndexLibrary {
   return {
     key: String(section.key),
@@ -182,12 +197,18 @@ export function mapLibrary(section: any, previous?: PlexIndexLibrary): PlexIndex
 }
 
 export function mapMovieItem(item: any, libraryKey: string): PlexMovieIndexEntry {
+  const durationMinutes = typeof item.duration === "number"
+    ? Math.round(item.duration / 60000)
+    : null
+
   return {
     ratingKey: String(item.ratingKey),
     libraryKey,
     title: item.title,
     originalTitle: item.originalTitle ?? null,
     year: item.year ?? null,
+    originallyAvailableAt: normalizePlexDate(item.originallyAvailableAt),
+    durationMinutes,
     summary: item.summary ?? null,
     contentRating: item.contentRating ?? null,
     studio: item.studio ?? null,

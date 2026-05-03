@@ -15,10 +15,15 @@ type Movie = {
   title: string
   originalTitle?: string | null
   year?: number | null
+  addedAt?: string | null
+  originallyAvailableAt?: string | null
+  durationMinutes?: number | null
   summary?: string | null
 }
 
 type PosterSize = "small" | "medium" | "large"
+type SortField = "recorded" | "production" | "title"
+type SortDirection = "asc" | "desc"
 
 const loading = ref(true)
 const syncing = ref(false)
@@ -30,14 +35,35 @@ const updatedAt = ref<string | null>(null)
 const source = ref("local")
 const error = ref<string | null>(null)
 const posterSize = ref<PosterSize>("medium")
+const sortField = ref<SortField>("recorded")
+const sortDirection = ref<SortDirection>("desc")
+const settingsOpen = ref(false)
 const posterErrors = ref<Record<string, boolean>>({})
 
 const filteredMovies = computed(() => movies.value)
+const totalMovies = computed(() => filteredMovies.value.length)
+const totalDurationMinutes = computed(() => {
+  return filteredMovies.value.reduce((sum, movie) => sum + (movie.durationMinutes ?? 0), 0)
+})
+const totalDurationHours = computed(() => {
+  return (totalDurationMinutes.value / 60).toFixed(1)
+})
 
 const sizeOptions: Array<{ title: string; value: PosterSize }> = [
   { title: "Klein", value: "small" },
   { title: "Mittel", value: "medium" },
   { title: "Groß", value: "large" },
+]
+
+const sortFieldOptions: Array<{ title: string; value: SortField }> = [
+  { title: "Aufnahmedatum", value: "recorded" },
+  { title: "Produktionsdatum", value: "production" },
+  { title: "Filmname", value: "title" },
+]
+
+const sortDirectionOptions: Array<{ title: string; value: SortDirection }> = [
+  { title: "Aufsteigend", value: "asc" },
+  { title: "Absteigend", value: "desc" },
 ]
 
 const gridCols = computed(() => {
@@ -50,6 +76,8 @@ const gridCols = computed(() => {
       return { cols: 12, sm: 6, md: 3, lg: 2 }
   }
 })
+
+const sortValue = computed(() => `${sortField.value}-${sortDirection.value}`)
 
 const posterHeight = computed(() => {
   switch (posterSize.value) {
@@ -89,6 +117,15 @@ function formatTimestamp(value?: string | null) {
   })
 }
 
+function formatShortDate(value?: string | null) {
+  if (!value) return "–"
+  return new Date(value).toLocaleDateString("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  })
+}
+
 async function loadLibraries() {
   const res = await $fetch<{ items: Library[]; source: string }>("/api/plex/index/libraries")
   libraries.value = res.items
@@ -103,6 +140,7 @@ async function loadMovies() {
   const query = new URLSearchParams()
   if (selectedLibrary.value) query.set("libraryKey", selectedLibrary.value)
   if (search.value.trim()) query.set("q", search.value.trim())
+  query.set("sort", sortValue.value)
 
   const res = await $fetch<{ items: Movie[]; updatedAt: string | null }>(
     `/api/plex/index/movies${query.size ? `?${query.toString()}` : ""}`
@@ -152,6 +190,70 @@ onMounted(async () => {
       <v-card-title>Plex Offline Index</v-card-title>
       <v-card-text>
         <v-row dense>
+          <v-col cols="12" md="1" class="d-flex align-center">
+            <v-menu v-model="settingsOpen" :close-on-content-click="false">
+              <template #activator="{ props }">
+                <v-btn
+                  icon="mdi-menu"
+                  variant="tonal"
+                  aria-label="Einstellungen"
+                  v-bind="props"
+                />
+              </template>
+
+              <v-card min-width="320">
+                <v-card-title class="text-subtitle-1">
+                  Anzeige
+                </v-card-title>
+                <v-card-text>
+                  <div class="text-caption text-medium-emphasis mb-2">
+                    Postergröße
+                  </div>
+                  <v-btn-toggle
+                    v-model="posterSize"
+                    mandatory
+                    divided
+                    density="comfortable"
+                    class="mb-4"
+                  >
+                    <v-btn
+                      v-for="option in sizeOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.title }}
+                    </v-btn>
+                  </v-btn-toggle>
+
+                  <v-select
+                    v-model="sortField"
+                    label="Sortieren nach"
+                    :items="sortFieldOptions"
+                    item-title="title"
+                    item-value="value"
+                    hide-details
+                    class="mb-3"
+                    @update:model-value="loadMovies"
+                  />
+
+                  <v-radio-group
+                    v-model="sortDirection"
+                    label="Reihenfolge"
+                    hide-details
+                    inline
+                    @update:model-value="loadMovies"
+                  >
+                    <v-radio
+                      v-for="option in sortDirectionOptions"
+                      :key="option.value"
+                      :label="option.title"
+                      :value="option.value"
+                    />
+                  </v-radio-group>
+                </v-card-text>
+              </v-card>
+            </v-menu>
+          </v-col>
           <v-col cols="12" md="4">
             <v-select
               v-model="selectedLibrary"
@@ -172,32 +274,10 @@ onMounted(async () => {
               @update:model-value="loadMovies"
             />
           </v-col>
-          <v-col cols="12" md="4" class="d-flex align-center">
+          <v-col cols="12" md="3" class="d-flex align-center ga-2">
             <v-btn color="primary" :loading="syncing" @click="syncSelected">
               Mediathek synchronisieren
             </v-btn>
-          </v-col>
-        </v-row>
-
-        <v-row dense class="mt-1">
-          <v-col cols="12" md="6">
-            <div class="text-caption text-medium-emphasis mb-2">
-              Postergröße
-            </div>
-            <v-btn-toggle
-              v-model="posterSize"
-              mandatory
-              divided
-              density="comfortable"
-            >
-              <v-btn
-                v-for="option in sizeOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.title }}
-              </v-btn>
-            </v-btn-toggle>
           </v-col>
         </v-row>
 
@@ -219,9 +299,23 @@ onMounted(async () => {
           {{ error }}
         </v-alert>
 
-        <div class="text-caption text-medium-emphasis mt-4">
-          Letzter lokaler Index: {{ formatTimestamp(updatedAt) }}
-        </div>
+        <v-row dense class="mt-4">
+          <v-col cols="12" md="4">
+            <div class="text-caption text-medium-emphasis">
+              Filme: {{ totalMovies }}
+            </div>
+          </v-col>
+          <v-col cols="12" md="4">
+            <div class="text-caption text-medium-emphasis">
+              Laufzeit: {{ totalDurationHours }} Stunden
+            </div>
+          </v-col>
+          <v-col cols="12" md="4">
+            <div class="text-caption text-medium-emphasis">
+              Letzter lokaler Index: {{ formatTimestamp(updatedAt) }}
+            </div>
+          </v-col>
+        </v-row>
       </v-card-text>
     </v-card>
 
@@ -262,9 +356,10 @@ onMounted(async () => {
             </div>
           </div>
           <v-card-title>{{ movie.title }}</v-card-title>
-          <v-card-subtitle>
-            {{ movie.year ?? "ohne Jahr" }}
-          </v-card-subtitle>
+          <div class="movie-meta text-caption text-medium-emphasis">
+            <span>Prod: {{ movie.year ?? "ohne Jahr" }}</span>
+            <span>Aufn: {{ formatShortDate(movie.addedAt) }}</span>
+          </div>
           <v-card-text class="text-body-2 summary-text">
             {{ movie.summary || "Keine Beschreibung vorhanden." }}
           </v-card-text>
@@ -297,5 +392,12 @@ onMounted(async () => {
   max-height: 12em;
   overflow-y: auto;
   line-height: 1.5;
+}
+
+.movie-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px 8px;
 }
 </style>
