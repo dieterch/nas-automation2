@@ -29,7 +29,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=build /app/.output ./.output
+COPY docker/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "script -q -a -c \"node ./.output/server/index.mjs\" /app/logs/app.log"]
+CMD ["/app/start.sh"]

@@ -5,6 +5,8 @@ services:
       dockerfile: docker/Dockerfile
     container_name: nas-automation
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       TZ: Europe/Vienna
     ports:
