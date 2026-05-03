@@ -14,12 +14,19 @@ import {
   writePosterFile,
 } from "../../../utils/plex-index"
 
+const POSTER_FETCH_TIMEOUT_MS = 5000
+const POSTER_FETCH_RETRIES = 3
+const POSTER_FETCH_CONCURRENCY = 4
+const POSTER_RETRY_BASE_DELAY_MS = 750
+
+let syncStatusWriteChain = Promise.resolve()
+
 async function fetchPlexBinary(relativeUrl: string) {
   const cfg = useRuntimeConfig()
   const fullUrl = `${cfg.plexHost}${relativeUrl}`
 
   const res = await fetch(fullUrl, {
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(POSTER_FETCH_TIMEOUT_MS),
     headers: {
       Accept: "*/*",
       "X-Plex-Token": cfg.plexToken,
@@ -40,27 +47,60 @@ function toErrorMessage(err: unknown) {
   return String(err)
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function fetchPlexBinaryWithRetry(relativeUrl: string) {
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= POSTER_FETCH_RETRIES; attempt += 1) {
+    try {
+      return await fetchPlexBinary(relativeUrl)
+    } catch (err) {
+      lastError = err
+
+      if (attempt < POSTER_FETCH_RETRIES) {
+        await sleep(POSTER_RETRY_BASE_DELAY_MS * attempt)
+      }
+    }
+  }
+
+  throw lastError ?? new Error("poster fetch failed")
+}
+
+async function mutateSyncStatus(mutator: (status: Awaited<ReturnType<typeof readSyncStatus>>) => any) {
+  const nextWrite = syncStatusWriteChain.then(async () => {
+    const status = await readSyncStatus()
+    await writeSyncStatus(mutator(status))
+  })
+
+  syncStatusWriteChain = nextWrite.catch(() => {})
+  return nextWrite
+}
+
 async function updateLibrarySyncStatus(
   libraryKey: string,
   updater: (library: any) => any,
   globalUpdater?: (status: any) => any
 ) {
-  const status = await readSyncStatus()
-  const nextLibraries = status.libraries.map((library) => {
-    if (library.libraryKey !== libraryKey) return library
-    return updater(library)
+  await mutateSyncStatus((status) => {
+    const nextLibraries = status.libraries.map((library) => {
+      if (library.libraryKey !== libraryKey) return library
+      return updater(library)
+    })
+
+    const nextStatus = {
+      ...status,
+      libraries: nextLibraries,
+    }
+
+    return globalUpdater ? globalUpdater(nextStatus) : nextStatus
   })
-
-  const nextStatus = {
-    ...status,
-    libraries: nextLibraries,
-  }
-
-  await writeSyncStatus(globalUpdater ? globalUpdater(nextStatus) : nextStatus)
 }
 
 async function downloadMissingPosters(libraryKey: string, items: any[]) {
-  for (const item of items) {
+  async function processPoster(item: any) {
     const ratingKey = String(item.ratingKey)
     const thumb = item.thumb as string | undefined
 
@@ -69,7 +109,7 @@ async function downloadMissingPosters(libraryKey: string, items: any[]) {
         ...library,
         posterCompleted: library.posterCompleted + 1,
       }))
-      continue
+      return
     }
 
     if (posterExists(libraryKey, ratingKey)) {
@@ -77,11 +117,11 @@ async function downloadMissingPosters(libraryKey: string, items: any[]) {
         ...library,
         posterCompleted: library.posterCompleted + 1,
       }))
-      continue
+      return
     }
 
     try {
-      const bytes = await fetchPlexBinary(thumb)
+      const bytes = await fetchPlexBinaryWithRetry(thumb)
       await writePosterFile(libraryKey, ratingKey, bytes)
       await updateLibrarySyncStatus(libraryKey, (library) => ({
         ...library,
@@ -98,24 +138,40 @@ async function downloadMissingPosters(libraryKey: string, items: any[]) {
     }
   }
 
-  const currentStatus = await readSyncStatus()
-  const nextLibraries = currentStatus.libraries.map((library) => {
-    if (library.libraryKey !== libraryKey) return library
-    return {
-      ...library,
-      status: library.posterFailed > 0 ? "error" : "done",
-      finishedAt: new Date().toISOString(),
+  const workers = Array.from({
+    length: Math.max(1, Math.min(POSTER_FETCH_CONCURRENCY, items.length || 1)),
+  }, async (_, workerIndex) => {
+    for (let index = workerIndex; index < items.length; index += POSTER_FETCH_CONCURRENCY) {
+      await processPoster(items[index])
     }
   })
 
-  const anyRunning = nextLibraries.some((library) => !["done", "error"].includes(library.status))
-  await writeSyncStatus({
-    ...currentStatus,
-    isRunning: anyRunning,
-    phase: anyRunning ? "posters" : "done",
-    finishedAt: anyRunning ? currentStatus.finishedAt : new Date().toISOString(),
-    lastSuccessAt: anyRunning ? currentStatus.lastSuccessAt : new Date().toISOString(),
-    libraries: nextLibraries,
+  await Promise.all(workers)
+
+  await mutateSyncStatus((currentStatus) => {
+    const nextLibraries = currentStatus.libraries.map((library) => {
+      if (library.libraryKey !== libraryKey) return library
+      return {
+        ...library,
+        status: library.posterFailed > 0 ? "error" : "done",
+        finishedAt: new Date().toISOString(),
+      }
+    })
+
+    const anyRunning = nextLibraries.some((library) => !["done", "error"].includes(library.status))
+    const anyErrors = nextLibraries.some((library) => library.status === "error")
+
+    return {
+      ...currentStatus,
+      isRunning: anyRunning,
+      phase: anyRunning ? "posters" : anyErrors ? "error" : "done",
+      finishedAt: anyRunning ? currentStatus.finishedAt : new Date().toISOString(),
+      lastSuccessAt: anyRunning || anyErrors ? currentStatus.lastSuccessAt : new Date().toISOString(),
+      lastError: anyErrors
+        ? nextLibraries.find((library) => library.status === "error")?.lastError ?? currentStatus.lastError
+        : null,
+      libraries: nextLibraries,
+    }
   })
 }
 
