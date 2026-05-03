@@ -450,10 +450,18 @@ onBeforeUnmount(() => {
               @update:model-value="loadCurrentItems"
             />
           </v-col>
-          <v-col cols="12" md="3" class="d-flex align-center ga-2">
-            <v-btn color="primary" :loading="syncing" @click="syncSelected">
-              Mediathek synchronisieren
-            </v-btn>
+          <v-col cols="12" md="1" class="d-flex align-center ga-2">
+            <v-tooltip text="Mediathek synchronisieren" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  color="primary"
+                  icon="mdi-sync"
+                  :loading="syncing"
+                  @click="syncSelected"
+                />
+              </template>
+            </v-tooltip>
           </v-col>
         </v-row>
 
