@@ -2,15 +2,21 @@ import { readBody } from "h3"
 import { fetchPlexSafely } from "../../../utils/plex-utils"
 import {
   ensurePlexIndexStructure,
+  mapEpisodeItem,
   mapLibrary,
   mapMovieItem,
+  mapShowItem,
   posterExists,
+  readIndexedEpisodes,
   readIndexedLibraries,
   readIndexedMovies,
+  readIndexedShows,
   readSyncStatus,
+  writeIndexedEpisodes,
   writeSyncStatus,
   writeIndexedLibraries,
   writeIndexedMovies,
+  writeIndexedShows,
   writePosterFile,
 } from "../../../utils/plex-index"
 
@@ -200,7 +206,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const sections = ((sectionsResponse as any)?.MediaContainer?.Directory ?? [])
-    .filter((section: any) => section.type === "movie")
+    .filter((section: any) => ["movie", "show"].includes(section.type))
     .filter((section: any) => requestedKeys.length === 0 || requestedKeys.includes(String(section.key)))
 
   await writeSyncStatus({
@@ -226,14 +232,24 @@ export default defineEventHandler(async (event) => {
 
   const librariesEnvelope = await readIndexedLibraries()
   const moviesEnvelope = await readIndexedMovies()
+  const showsEnvelope = await readIndexedShows()
+  const episodesEnvelope = await readIndexedEpisodes()
 
   const libraryMap = new Map(librariesEnvelope.items.map((item) => [item.key, item]))
   const retainedMovies = moviesEnvelope.items.filter(
-    (item) => !sections.some((section: any) => String(section.key) === item.libraryKey)
+    (item) => !sections.some((section: any) => section.type === "movie" && String(section.key) === item.libraryKey)
+  )
+  const retainedShows = showsEnvelope.items.filter(
+    (item) => !sections.some((section: any) => section.type === "show" && String(section.key) === item.libraryKey)
+  )
+  const retainedEpisodes = episodesEnvelope.items.filter(
+    (item) => !sections.some((section: any) => section.type === "show" && String(section.key) === item.libraryKey)
   )
 
   const syncedLibraries = [...librariesEnvelope.items]
   const newMovies = [...retainedMovies]
+  const newShows = [...retainedShows]
+  const newEpisodes = [...retainedEpisodes]
   const syncResults: Array<{ libraryKey: string; title: string; count: number }> = []
 
   for (const section of sections) {
@@ -253,7 +269,11 @@ export default defineEventHandler(async (event) => {
       })
     )
 
-    const allResponse = await fetchPlexSafely(`/library/sections/${libraryKey}/all?type=1`)
+    const allResponse = await fetchPlexSafely(
+      section.type === "movie"
+        ? `/library/sections/${libraryKey}/all?type=1`
+        : `/library/sections/${libraryKey}/all?type=2`
+    )
 
     if ((allResponse as any)?.error) {
       await updateLibrarySyncStatus(
@@ -278,15 +298,56 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const items = (allResponse as any)?.MediaContainer?.Metadata ?? []
-    const mapped = items.map((item: any) => mapMovieItem(item, libraryKey))
+    const topLevelItems = (allResponse as any)?.MediaContainer?.Metadata
+      ?? (allResponse as any)?.MediaContainer?.Directory
+      ?? []
 
-    newMovies.push(...mapped)
+    let mappedCount = 0
+    let posterItems = topLevelItems
+
+    if (section.type === "movie") {
+      const mappedMovies = topLevelItems.map((item: any) => mapMovieItem(item, libraryKey))
+      newMovies.push(...mappedMovies)
+      mappedCount = mappedMovies.length
+    } else {
+      const episodesResponse = await fetchPlexSafely(`/library/sections/${libraryKey}/allLeaves`)
+      if ((episodesResponse as any)?.error) {
+        await updateLibrarySyncStatus(
+          libraryKey,
+          (library) => ({
+            ...library,
+            status: "error",
+            finishedAt: new Date().toISOString(),
+            lastError: `Plex episode sync failed: ${section.title}`,
+          }),
+          (status) => ({
+            ...status,
+            isRunning: false,
+            phase: "error",
+            finishedAt: new Date().toISOString(),
+            lastError: `Plex episode sync failed: ${section.title}`,
+          })
+        )
+        throw createError({
+          statusCode: 503,
+          statusMessage: `Plex episode sync failed: ${section.title}`,
+        })
+      }
+
+      const episodeItems = (episodesResponse as any)?.MediaContainer?.Metadata ?? []
+      const mappedShows = topLevelItems.map((item: any) => mapShowItem(item, libraryKey))
+      const mappedEpisodes = episodeItems.map((item: any) => mapEpisodeItem(item, libraryKey))
+
+      newShows.push(...mappedShows)
+      newEpisodes.push(...mappedEpisodes)
+      mappedCount = mappedShows.length
+      posterItems = topLevelItems
+    }
 
     const nextLibrary = {
       ...mapLibrary(section, libraryMap.get(libraryKey)),
       lastSyncAt: new Date().toISOString(),
-      itemCount: mapped.length,
+      itemCount: mappedCount,
     }
 
     const existingIndex = syncedLibraries.findIndex((item) => item.key === libraryKey)
@@ -299,18 +360,20 @@ export default defineEventHandler(async (event) => {
     syncResults.push({
       libraryKey,
       title: section.title,
-      count: mapped.length,
+      count: mappedCount,
     })
 
     await writeIndexedMovies(newMovies)
+    await writeIndexedShows(newShows)
+    await writeIndexedEpisodes(newEpisodes)
     await writeIndexedLibraries(syncedLibraries)
 
     await updateLibrarySyncStatus(
       libraryKey,
       (library) => ({
         ...library,
-        itemCount: mapped.length,
-        posterTotal: items.length,
+        itemCount: mappedCount,
+        posterTotal: posterItems.length,
         status: "posters",
       }),
       (status) => ({
@@ -319,7 +382,7 @@ export default defineEventHandler(async (event) => {
       })
     )
 
-    void downloadMissingPosters(libraryKey, items)
+    void downloadMissingPosters(libraryKey, posterItems)
   }
 
   return {

@@ -45,6 +45,7 @@ export type PlexMovieIndexEntry = {
   year?: number | null
   originallyAvailableAt?: string | null
   durationMinutes?: number | null
+  sizeBytes?: number | null
   summary?: string | null
   contentRating?: string | null
   studio?: string | null
@@ -54,6 +55,49 @@ export type PlexMovieIndexEntry = {
   addedAt?: string | null
   updatedAt?: string | null
   type: "movie"
+}
+
+export type PlexShowIndexEntry = {
+  ratingKey: string
+  libraryKey: string
+  title: string
+  originalTitle?: string | null
+  year?: number | null
+  originallyAvailableAt?: string | null
+  durationMinutes?: number | null
+  sizeBytes?: number | null
+  summary?: string | null
+  contentRating?: string | null
+  studio?: string | null
+  genres: string[]
+  posterPath?: string | null
+  thumbPath?: string | null
+  episodeCount: number
+  seasonCount: number
+  addedAt?: string | null
+  updatedAt?: string | null
+  type: "show"
+}
+
+export type PlexEpisodeIndexEntry = {
+  ratingKey: string
+  libraryKey: string
+  showRatingKey: string
+  showTitle: string
+  seasonRatingKey?: string | null
+  seasonTitle?: string | null
+  seasonNumber?: number | null
+  episodeNumber?: number | null
+  title: string
+  summary?: string | null
+  year?: number | null
+  originallyAvailableAt?: string | null
+  durationMinutes?: number | null
+  sizeBytes?: number | null
+  thumbPath?: string | null
+  addedAt?: string | null
+  updatedAt?: string | null
+  type: "episode"
 }
 
 type IndexEnvelope<T> = {
@@ -188,6 +232,22 @@ export async function writeIndexedMovies(items: PlexMovieIndexEntry[]) {
   await writeEnvelope(getMoviesFile(), items)
 }
 
+export async function readIndexedShows(): Promise<IndexEnvelope<PlexShowIndexEntry>> {
+  return readEnvelope<PlexShowIndexEntry>(getShowsFile())
+}
+
+export async function writeIndexedShows(items: PlexShowIndexEntry[]) {
+  await writeEnvelope(getShowsFile(), items)
+}
+
+export async function readIndexedEpisodes(): Promise<IndexEnvelope<PlexEpisodeIndexEntry>> {
+  return readEnvelope<PlexEpisodeIndexEntry>(getEpisodesFile())
+}
+
+export async function writeIndexedEpisodes(items: PlexEpisodeIndexEntry[]) {
+  await writeEnvelope(getEpisodesFile(), items)
+}
+
 export async function readSyncStatus(): Promise<PlexIndexSyncStatus> {
   await ensureSyncStatusFile()
 
@@ -246,6 +306,23 @@ export function normalizePlexDate(value: unknown): string | null {
   return date.toISOString()
 }
 
+function getPlexItemSizeBytes(item: any): number | null {
+  const media = Array.isArray(item?.Media) ? item.Media : []
+  let total = 0
+
+  for (const mediaItem of media) {
+    const parts = Array.isArray(mediaItem?.Part) ? mediaItem.Part : []
+    for (const part of parts) {
+      const size = Number(part?.size ?? 0)
+      if (Number.isFinite(size) && size > 0) {
+        total += size
+      }
+    }
+  }
+
+  return total > 0 ? total : null
+}
+
 export function mapLibrary(section: any, previous?: PlexIndexLibrary): PlexIndexLibrary {
   return {
     key: String(section.key),
@@ -264,6 +341,7 @@ export function mapMovieItem(item: any, libraryKey: string): PlexMovieIndexEntry
   const durationMinutes = typeof item.duration === "number"
     ? Math.round(item.duration / 60000)
     : null
+  const sizeBytes = getPlexItemSizeBytes(item)
 
   return {
     ratingKey: String(item.ratingKey),
@@ -273,6 +351,7 @@ export function mapMovieItem(item: any, libraryKey: string): PlexMovieIndexEntry
     year: item.year ?? null,
     originallyAvailableAt: normalizePlexDate(item.originallyAvailableAt),
     durationMinutes,
+    sizeBytes,
     summary: item.summary ?? null,
     contentRating: item.contentRating ?? null,
     studio: item.studio ?? null,
@@ -282,5 +361,62 @@ export function mapMovieItem(item: any, libraryKey: string): PlexMovieIndexEntry
     addedAt: normalizePlexTimestamp(item.addedAt),
     updatedAt: normalizePlexTimestamp(item.updatedAt),
     type: "movie",
+  }
+}
+
+export function mapShowItem(item: any, libraryKey: string): PlexShowIndexEntry {
+  const durationMinutes = typeof item.duration === "number"
+    ? Math.round(item.duration / 60000)
+    : null
+  const sizeBytes = getPlexItemSizeBytes(item)
+
+  return {
+    ratingKey: String(item.ratingKey),
+    libraryKey,
+    title: item.title,
+    originalTitle: item.originalTitle ?? null,
+    year: item.year ?? null,
+    originallyAvailableAt: normalizePlexDate(item.originallyAvailableAt),
+    durationMinutes,
+    sizeBytes,
+    summary: item.summary ?? null,
+    contentRating: item.contentRating ?? null,
+    studio: item.studio ?? null,
+    genres: Array.isArray(item.Genre) ? item.Genre.map((g: any) => g.tag).filter(Boolean) : [],
+    posterPath: getPosterRelativePath(libraryKey, String(item.ratingKey)),
+    thumbPath: item.thumb ?? null,
+    episodeCount: Number(item.leafCount ?? 0),
+    seasonCount: Number(item.childCount ?? 0),
+    addedAt: normalizePlexTimestamp(item.addedAt),
+    updatedAt: normalizePlexTimestamp(item.updatedAt),
+    type: "show",
+  }
+}
+
+export function mapEpisodeItem(item: any, libraryKey: string): PlexEpisodeIndexEntry {
+  const durationMinutes = typeof item.duration === "number"
+    ? Math.round(item.duration / 60000)
+    : null
+  const sizeBytes = getPlexItemSizeBytes(item)
+
+  return {
+    ratingKey: String(item.ratingKey),
+    libraryKey,
+    showRatingKey: String(item.grandparentRatingKey),
+    showTitle: item.grandparentTitle ?? "",
+    seasonRatingKey: item.parentRatingKey ? String(item.parentRatingKey) : null,
+    seasonTitle: item.parentTitle ?? null,
+    seasonNumber: item.parentIndex ?? null,
+    episodeNumber: item.index ?? null,
+    title: item.title,
+    summary: item.summary ?? null,
+    year: item.year ?? null,
+    originallyAvailableAt: normalizePlexDate(item.originallyAvailableAt),
+    durationMinutes,
+    sizeBytes,
+    thumbPath: item.thumb ?? item.grandparentThumb ?? null,
+    addedAt: normalizePlexTimestamp(item.addedAt),
+    updatedAt: normalizePlexTimestamp(item.updatedAt),
+    type: "episode",
   }
 }
