@@ -31,3 +31,4 @@ docker/ssh/
 docker/.env
 docker/.env.*
 !docker/.env.example
+docker/compose.local.yml

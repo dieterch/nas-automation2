@@ -1,0 +1,17 @@
+services:
+  nasautomation:
+    ports: []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nasautomation.rule=Host(`nasautomation.home.smallfamilybusiness.net`)"
+      - "traefik.http.routers.nasautomation.entrypoints=https"
+      - "traefik.http.routers.nasautomation.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nasautomation.middlewares=authelia@file"
+      - "traefik.http.services.nasautomation.loadbalancer.server.port=3000"
+      - "traefik.docker.network=traefik_network"
+    networks:
+      - traefik_network
+
+networks:
+  traefik_network:
+    external: true
