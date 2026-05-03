@@ -9,7 +9,7 @@ Der Startumfang ist bewusst klein:
 1. Plex-Mediatheken auflisten
 2. ausgewählte Mediatheken lokal synchronisieren
 3. Filme mit Poster, Titel und Erscheinungsjahr anzeigen
-4. Serien im Datenmodell vorbereiten, aber funktional noch nicht vollständig umsetzen
+4. Serien lokal indexieren und im UI anzeigen
 
 ---
 
@@ -33,7 +33,6 @@ Diese Erweiterung soll vorerst **nicht**:
 
 - Plex vollständig spiegeln
 - Transcoding oder Streaming bereitstellen
-- Serien- und Episoden-Ansichten vollständig implementieren
 - Benutzerverwaltung oder Mehrbenutzerlogik einführen
 - bestehende Automationslogik grundlegend umbauen
 
@@ -78,6 +77,7 @@ data/
   plex-index/
     libraries.json
     movies.json
+    sync-status.json
     posters/
       <libraryKey>/
         <ratingKey>.jpg
@@ -95,6 +95,7 @@ Enthält lokal bekannte Plex-Libraries, z. B.:
 - `agent`
 - `updatedAt`
 - `lastSyncAt`
+- `itemCount`
 
 ### 5.2 `movies.json`
 
@@ -107,6 +108,9 @@ Jeder Filmeintrag sollte mindestens enthalten:
 - `title`
 - `originalTitle`
 - `year`
+- `originallyAvailableAt`
+- `durationMinutes`
+- `sizeBytes`
 - `summary`
 - `contentRating`
 - `studio`
@@ -117,9 +121,70 @@ Jeder Filmeintrag sollte mindestens enthalten:
 - `updatedAt`
 - `type`
 
-### 5.3 `shows.json` und `episodes.json`
+### 5.3 `shows.json`
 
-Diese Dateien werden im Startumfang noch nicht aktiv genutzt, sollen aber strukturell vorbereitet werden, damit die spätere Erweiterung auf Serien ohne Formatbruch möglich ist.
+Enthält lokal synchronisierte Serien.
+
+Ein Show-Eintrag enthält mindestens:
+
+- `ratingKey`
+- `libraryKey`
+- `title`
+- `originalTitle`
+- `year`
+- `originallyAvailableAt`
+- `durationMinutes`
+- `sizeBytes`
+- `summary`
+- `contentRating`
+- `studio`
+- `genres`
+- `posterPath`
+- `thumbPath`
+- `episodeCount`
+- `seasonCount`
+- `addedAt`
+- `updatedAt`
+- `type`
+
+### 5.4 `episodes.json`
+
+Enthält lokal synchronisierte Episoden.
+
+Ein Episodeneintrag enthält mindestens:
+
+- `ratingKey`
+- `libraryKey`
+- `showRatingKey`
+- `showTitle`
+- `seasonRatingKey`
+- `seasonTitle`
+- `seasonNumber`
+- `episodeNumber`
+- `title`
+- `summary`
+- `year`
+- `originallyAvailableAt`
+- `durationMinutes`
+- `sizeBytes`
+- `thumbPath`
+- `addedAt`
+- `updatedAt`
+- `type`
+
+### 5.5 `sync-status.json`
+
+Enthält den letzten und ggf. aktuellen Synchronisationsstatus.
+
+Beispiele:
+
+- `isRunning`
+- `phase`
+- `startedAt`
+- `finishedAt`
+- `lastSuccessAt`
+- `lastError`
+- Status pro Library inklusive Posterfortschritt
 
 ---
 
@@ -136,6 +201,7 @@ Verhalten:
 - fragt Plex-Libraries live ab
 - filtert relevante Sektionen
 - liefert die Liste für UI und Sync-Auswahl
+- liefert zusätzlich den lokalen Sync-Status
 
 Wenn Plex offline ist:
 
@@ -153,21 +219,27 @@ Verhalten:
 - synchronisiert eine oder mehrere angegebene Libraries
 - liest Metadaten aus Plex
 - speichert Filme lokal in `movies.json`
+- speichert Shows lokal in `shows.json`
+- speichert Episoden lokal in `episodes.json`
 - lädt Poster lokal herunter
 - aktualisiert `libraries.json`
+- aktualisiert `sync-status.json`
 
 Anforderungen:
 
 - idempotent
 - robust bei Teilfehlern
 - kein Löschen fremder Dateien außerhalb von `data/plex-index`
+- Poster-Downloads dürfen parallelisiert und mit Retry-Logik abgesichert werden
 
 ## 6.3 Lokalen Index lesen
 
 Neue API-Routen:
 
 - `GET /api/plex/index/movies`
-- optional später: `GET /api/plex/index/shows`
+- `GET /api/plex/index/shows`
+- `GET /api/plex/index/episodes`
+- `GET /api/plex/index/status`
 
 Verhalten:
 
@@ -189,6 +261,11 @@ Startumfang der Darstellung:
 - Titel
 - Erscheinungsjahr
 - optional kurze Zusammenfassung
+- Serienansicht mit Shows und ausklappbaren Episoden
+- Sortierung
+- Postergrößen-Umschaltung
+- Statistik inkl. Laufzeit und belegter Größe
+- Sync-Status und Posterfortschritt
 
 Anforderungen:
 
@@ -201,6 +278,8 @@ Zusätzlich sinnvoll:
 - Sync-Button für manuelle Aktualisierung
 - Anzeige von `lastSyncAt`
 - Hinweis, wenn nur Offline-Daten angezeigt werden
+- Statusanzeige für laufende Synchronisierung
+- Fehlerhinweise bei Posterproblemen
 
 ---
 
@@ -221,9 +300,10 @@ Empfohlene Ablage:
 
 Wenn ein Poster-Download fehlschlägt:
 
-- Filmeintrag trotzdem speichern
+- Medieneintrag trotzdem speichern
 - `posterPath` darf leer oder `null` sein
 - Fehler nur loggen, nicht Gesamtsync abbrechen
+- Retry-Logik ist sinnvoll
 
 ---
 
@@ -241,23 +321,24 @@ Beispiele:
 - Plex nicht erreichbar -> Sync fehlgeschlagen, alter Index bleibt erhalten
 - Poster einzelner Filme nicht ladbar -> restlicher Sync läuft weiter
 - fehlerhafte Library -> andere Libraries können trotzdem synchronisiert werden
+- Serien-Library fehlerhaft -> bestehender lokaler Serienindex bleibt erhalten
 
 ---
 
-## 10. Datenmodell-Vorbereitung für Serien
+## 10. Aktueller Ist-Stand
 
-Obwohl Serien noch nicht vollständig umgesetzt werden, soll das Datenmodell bereits diese Trennung erlauben:
+Der aktuelle Code setzt bereits um:
 
-- `movie`
-- `show`
-- `episode`
+- Film-Libraries
+- Serien-Libraries
+- Shows und Episoden
+- lokale Poster
+- Sync-Status
+- Poster-Retries und begrenzte Parallelität
+- UI mit Film- und Serienmodus
+- Größenanzeige pro Mediathek
 
-Empfohlene spätere Beziehungen:
-
-- `shows.json` enthält Serien-Metadaten
-- `episodes.json` enthält Episoden mit Referenz auf `showRatingKey`
-
-Damit bleibt der Film-Startumfang klein, ohne den späteren Ausbau zu blockieren.
+Offen sind vor allem weitere UX-Verbesserungen, nicht mehr die grundlegende Backend-Struktur.
 
 ---
 

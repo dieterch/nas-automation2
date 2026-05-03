@@ -4,6 +4,24 @@
 
 Der Kern des Systems ist keine Datenbank und kein klassisches CRUD-Backend, sondern eine serverseitige Tick-Logik mit dateibasierter Persistenz in `data/`.
 
+## Plex Offline Index
+
+Ein wesentlicher neuer Baustein ist der lokale `Plex Offline Index`.
+
+Damit kann die Anwendung ausgewählte Plex-Mediatheken lokal spiegeln, sodass Inhalte auch dann im UI sichtbar bleiben, wenn NAS oder Plex nicht erreichbar sind.
+
+Der aktuelle Stand umfasst:
+
+- Auflisten von Plex-Libraries
+- lokalen Sync für Film- und Serien-Libraries
+- lokale Persistenz für Filme, Shows und Episoden
+- lokale Posterablage
+- Sync-Status mit Fortschritt und Fehlerzustand
+- Offline-UI für Filme und Serien unter `Plex Offline`
+- Größenanzeige pro Mediathek in `GB`
+
+Die technische Detailspezifikation steht in [spec_plex_offline_index.md](/home/developer/projects/nas-automation2/spec_plex_offline_index.md).
+
 ## Architektur
 
 - UI-Seiten lesen Status und ändern Konfiguration.
@@ -22,6 +40,13 @@ Die verbindliche Ist-Beschreibung steht in [spec_ist_nas_automation.md](/home/de
 - `data/`: Persistenz für Konfiguration, State und Caches
 - `docker/`: Dockerfile und Compose-Setup
 
+Für den Plex-Offline-Index sind zusätzlich besonders relevant:
+
+- `pages/plex-index.vue`
+- `server/api/plex/index/`
+- `server/utils/plex-index.ts`
+- `data/plex-index/`
+
 ## Laufzeitdaten
 
 Für einen sinnvollen Betrieb werden lokale Laufzeitdaten erwartet:
@@ -30,6 +55,15 @@ Für einen sinnvollen Betrieb werden lokale Laufzeitdaten erwartet:
 - `data/configuration.json`
 - `data/automation-state.json`
 - weitere Dateien unter `data/`, die im Betrieb gelesen oder erzeugt werden
+
+Der Plex-Offline-Index erzeugt zusätzlich unter `data/plex-index/`:
+
+- `libraries.json`
+- `movies.json`
+- `shows.json`
+- `episodes.json`
+- `sync-status.json`
+- `posters/<libraryKey>/<ratingKey>.jpg`
 
 Diese Dateien gehören nicht ins Git.
 
@@ -86,6 +120,12 @@ docker compose -f docker/compose.yml up -d
 Vor dem Start müssen `.env`, `data/` und `logs/` im Repo vorhanden sein.
 
 Weitere Hinweise stehen in [docker/README.md](/home/developer/projects/nas-automation2/docker/README.md).
+
+Nach Änderungen am Plex-Offline-Index ist ein üblicher Repo-basierter Neustart:
+
+```bash
+docker compose -f docker/compose.yml up -d --build
+```
 
 ## Git und Secrets
 
