@@ -7,6 +7,7 @@ Dieses Verzeichnis enthält das containerisierte Repo-Setup für `nas-automation
 - `compose.yml`: Compose-Definition für den Betrieb
 - `compose.local.example.yml`: Beispiel für host-spezifische Overrides
 - `Dockerfile`: Build des Nuxt/Nitro-Containers
+- `_BUILD`, `_START`, `_STOP` im Repo-Root: kurze Wrapper für Build, Start und Stop
 
 ## Erwartete Struktur
 
@@ -66,6 +67,30 @@ Mit lokalem Override starten:
 
 ```bash
 docker compose -f docker/compose.yml -f docker/compose.local.yml up -d
+```
+
+Wrapper aus dem Repo-Root:
+
+```bash
+source ./_BUILD
+source ./_START
+source ./_STOP
+```
+
+Direkt ohne Wrapper:
+
+```bash
+docker compose -f docker/compose.yml build
+docker compose -f docker/compose.yml up -d
+docker compose -f docker/compose.yml down
+```
+
+Direkt mit lokalem Override:
+
+```bash
+docker compose -f docker/compose.yml -f docker/compose.local.yml build
+docker compose -f docker/compose.yml -f docker/compose.local.yml up -d
+docker compose -f docker/compose.yml -f docker/compose.local.yml down
 ```
 
 Container stoppen:

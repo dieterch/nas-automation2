@@ -117,6 +117,32 @@ Containerstart erfolgt über:
 docker compose -f docker/compose.yml up -d
 ```
 
+Alternativ gibt es im Repo-Root kurze Wrapper:
+
+```bash
+source ./_BUILD
+source ./_START
+source ./_STOP
+```
+
+Diese verwenden automatisch zusätzlich `docker/compose.local.yml`, falls die Datei vorhanden ist.
+
+Direkt ohne Wrapper:
+
+```bash
+docker compose -f docker/compose.yml build
+docker compose -f docker/compose.yml up -d
+docker compose -f docker/compose.yml down
+```
+
+Mit lokalem Override:
+
+```bash
+docker compose -f docker/compose.yml -f docker/compose.local.yml build
+docker compose -f docker/compose.yml -f docker/compose.local.yml up -d
+docker compose -f docker/compose.yml -f docker/compose.local.yml down
+```
+
 Vor dem Start müssen `.env`, `data/` und `logs/` im Repo vorhanden sein.
 
 Weitere Hinweise stehen in [docker/README.md](/home/developer/projects/nas-automation2/docker/README.md).
